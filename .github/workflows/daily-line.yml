@@ -1,0 +1,37 @@
+# ------------------------------------------------------------------
+# 【任意】GASを使わず GitHub だけで毎朝配信したい場合のワークフロー。
+# GAS(gas/Code.gs)を使うならこのファイルは不要です（どちらか一方でOK）。
+#
+# 設定:
+#   リポジトリ Settings › Secrets and variables › Actions で
+#     - Secret: LINE_TOKEN      … チャネルアクセストークン
+#     - Secret: LINE_USER_ID    … Your user ID（U始まり）
+#     - Variable: QUIZ_URL      … 公開したアプリのURL
+#
+# 注意: スケジュール実行は数分〜十数分ずれることがあり、
+#       リポジトリが60日間無操作だと自動で無効化されます。
+#       ぴったりの時刻・確実性を重視するなら GAS を推奨。
+# ------------------------------------------------------------------
+name: daily-line-quiz
+
+on:
+  schedule:
+    - cron: '0 23 * * *'   # UTC 23:00 = JST 08:00
+  workflow_dispatch:        # 手動テスト実行用
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Push LINE message
+        env:
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          USER_ID: ${{ secrets.LINE_USER_ID }}
+          QUIZ_URL: ${{ vars.QUIZ_URL }}
+        run: |
+          TODAY=$(TZ=Asia/Tokyo date '+%-m月%-d日')
+          TEXT="おはようございます☀️\n${TODAY} のFP3級 30問です。\n6分野×5問、朝の1回でサクッと。\n\n▶ ${QUIZ_URL}"
+          curl -sS -X POST https://api.line.me/v2/bot/message/push \
+            -H "Authorization: Bearer ${LINE_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"to\":\"${USER_ID}\",\"messages\":[{\"type\":\"text\",\"text\":\"${TEXT}\"}]}"
