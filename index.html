@@ -34,6 +34,8 @@
 
 <!-- 問題バンク（このファイルを編集して問題を増やす） -->
 <script src="./questions.js"></script>
+<!-- スプレッドシート同期の設定（SYNC_URL を入れると有効化。空ならローカル保存のみ） -->
+<script src="./sync.js"></script>
 
 <script>
 /* ===== 問題バンクの読み込み確認 ===== */
@@ -102,6 +104,13 @@ function overallStats(hist){
   let c=0,t=0; const sec={}; SECTIONS.forEach(s=>sec[s.id]={correct:0,total:0});
   hist.forEach(h=>{ c+=h.score; t+=h.total; SECTIONS.forEach(s=>{ if(h.bySection&&h.bySection[s.id]){ sec[s.id].correct+=h.bySection[s.id].correct; sec[s.id].total+=h.bySection[s.id].total; } }); });
   return { pct:t?Math.round(c/t*100):0, days:hist.length, totalQ:t, sec };
+}
+/* ローカルとリモート(スプレッドシート)の記録を dateKey でマージ（新しい ts を優先） */
+function mergeHistories(local,remote){
+  const map={};
+  (local||[]).concat(remote||[]).forEach(h=>{ if(!h||!h.dateKey) return;
+    const ex=map[h.dateKey]; if(!ex||(h.ts||0)>=(ex.ts||0)) map[h.dateKey]=h; });
+  return Object.keys(map).map(k=>map[k]);
 }
 
 /* ===== 画面 ===== */
@@ -233,11 +242,17 @@ function handleClick(e){
   else if(act==="showtoday"){ const tk=todayKey(),rec=hist.find(h=>h.dateKey===tk); state.set=dailySet(tk); state.answers=rec?rec.rows.map(r=>r.chosen):state.set.map(()=>null); state.session=rec||computeSession(tk,state.set,state.answers); state.view="result"; render(); }
   else if(act==="next"){ state.idx++; render(); }
   else if(act==="prev"){ state.idx--; render(); }
-  else if(act==="grade"){ const tk=todayKey(),s=computeSession(tk,state.set,state.answers); putHistory([s,...hist.filter(h=>h.dateKey!==tk)]); state.session=s; state.view="result"; render(); }
+  else if(act==="grade"){ const tk=todayKey(),s=computeSession(tk,state.set,state.answers); putHistory([s,...hist.filter(h=>h.dateKey!==tk)]); if(window.Sync) Sync.save(s); state.session=s; state.view="result"; render(); }
 }
 
 document.getElementById("app").addEventListener("click",handleClick);
-render();
+render(); // まずローカルの記録で即描画
+// スプレッドシートに記録があれば取り込んで再描画（オフライン・未設定時は何もしない）
+if(window.Sync && Sync.enabled()){
+  Sync.loadAll().then(remote=>{
+    if(remote && remote.length){ putHistory(mergeHistories(getHistory(),remote)); render(); }
+  });
+}
 </script>
 </body>
 </html>
