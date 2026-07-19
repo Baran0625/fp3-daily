@@ -17,7 +17,7 @@
    気になる場合は、GAS側で合言葉トークンを検証する等の対策を追加してください。
    ============================================================= */
 
-window.SYNC_URL = ""; // 例: "https://script.google.com/macros/s/AKfy.../exec"
+window.SYNC_URL = "https://script.google.com/macros/s/AKfycbxvH_r4YfAnRVDnDh25MybVL7NX9DeUbYv4TD1wz6OiiehvJ2fAYLkgX8XYPJYCL9k/exec";
 
 window.Sync = {
   enabled: function(){ return !!window.SYNC_URL; },
