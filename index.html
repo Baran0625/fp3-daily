@@ -68,7 +68,14 @@ function putHistory(list){ store.set(HKEY,list); }
 
 /* ===== 日付ユーティリティ ===== */
 function todayKey(d=new Date()){ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0"); return `${y}-${m}-${day}`; }
-function fmtDate(key){ const [y,m,d]=key.split("-").map(Number); const wd=["日","月","火","水","木","金","土"][new Date(y,m-1,d).getDay()]; return `${m}月${d}日（${wd}）`; }
+function fmtDate(key){
+  if(!key || typeof key !== "string" || key.indexOf("-") < 0){ return String(key || "―"); }
+  const p = key.split("-").map(Number);
+  const y = p[0], m = p[1], d = p[2];
+  if(!y || !m || !d){ return key; }
+  const wd = ["日","月","火","水","木","金","土"][new Date(y, m-1, d).getDay()];
+  return `${m}月${d}日（${wd}）`;
+}
 function gradeColor(p){ return p>=80?"#059669":p>=60?"#d97706":"#e11d48"; }
 function secOf(id){ return SECTIONS.find(s=>s.id===id); }
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
