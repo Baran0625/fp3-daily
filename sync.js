@@ -53,5 +53,29 @@ window.Sync = {
       s.src = window.SYNC_URL + "?callback=" + cb + "&t=" + Date.now();
       document.body.appendChild(s);
     });
+  },
+
+  // 問題ごとの出題統計（{ id: {asked, correct} }）をJSONPで取得。
+  // 失敗・未設定・タイムアウト(8秒)のときは空オブジェクトを返す（呼び出し側はこれをフォールバックの合図にする）。
+  loadStats: function(){
+    return new Promise(function(resolve){
+      if(!window.SYNC_URL){ resolve({}); return; }
+      var cb = "__fp3cbstats_" + Date.now();
+      var s = document.createElement("script");
+      var done = false;
+      var timer = setTimeout(function(){ finish({}); }, 8000);
+      function finish(data){
+        if(done) return; done = true;
+        clearTimeout(timer);
+        try { delete window[cb]; } catch(e) { window[cb] = undefined; }
+        if(s.parentNode) s.parentNode.removeChild(s);
+        var ok = data && typeof data === "object" && !Array.isArray(data);
+        resolve(ok ? data : {});
+      }
+      window[cb] = function(data){ finish(data); };
+      s.onerror = function(){ finish({}); };
+      s.src = window.SYNC_URL + "?stats=1&callback=" + cb + "&t=" + Date.now();
+      document.body.appendChild(s);
+    });
   }
 };

@@ -47,15 +47,63 @@ if(!SECTIONS || !QUESTIONS){
   throw new Error("questions.js missing");
 }
 
-/* ===== 日付シード付き乱数 ===== */
+/* ===== 日付シード付き乱数（フォールバック用） ===== */
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return((t^t>>>14)>>>0)/4294967296; }; }
 function shuffle(arr,rng){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
-/* その日付の30問を決定的に選ぶ（同じ日は同じ／日が変わると変わる） */
-function dailySet(dateKey){
+/* その日付の30問を決定的に選ぶ（同じ日は同じ／日が変わると変わる）。statsが使えない時のフォールバック。 */
+function legacyDailySet(dateKey){
   const base=parseInt(dateKey.replace(/-/g,""),10); const set=[];
   SECTIONS.forEach((s,si)=>{ const pool=QUESTIONS.filter(q=>q.section===s.id);
     const rng=mulberry32(base+si*9301+49297); set.push(...shuffle(pool.slice(),rng).slice(0,5)); });
   return set;
+}
+
+/* ===== 重み付け非復元抽選 =====
+   weight = 1/(asked+1)。statsに無いid（未出題）は asked=0 → weight=1 で最優先。
+   毎回「残りプールから重みに比例して1問引く」を繰り返すことで非復元抽選になる。 */
+function weightedPickWithoutReplacement(pool, stats, n){
+  const items = pool.map(q=>({ q, w: 1/(((stats[q.id] && stats[q.id].asked) || 0) + 1) }));
+  const picked = [];
+  while(picked.length < n && items.length){
+    const total = items.reduce((s,it)=>s+it.w, 0);
+    let r = Math.random() * total;
+    let idx = items.length - 1;
+    for(let i=0;i<items.length;i++){ r -= items[i].w; if(r <= 1e-9){ idx = i; break; } }
+    picked.push(items.splice(idx,1)[0].q);
+  }
+  return picked;
+}
+
+/* その日の30問を新規に組み立てる。statsが取得できれば重み付け抽選、できなければ従来の日付シード抽選。 */
+async function buildDailySet(dateKey){
+  let stats = {};
+  if(window.Sync && Sync.enabled()){
+    try{ stats = await Sync.loadStats(); }catch(e){ stats = {}; }
+  }
+  const useWeighted = stats && Object.keys(stats).length > 0; // 空({}) = 未設定/失敗 とみなしフォールバック
+  if(!useWeighted) return legacyDailySet(dateKey);
+  const set = [];
+  SECTIONS.forEach(s=>{
+    const pool = QUESTIONS.filter(q=>q.section===s.id);
+    set.push(...weightedPickWithoutReplacement(pool, stats, 5));
+  });
+  return set;
+}
+
+/* ===== 当日セットの保存（同一端末では当日中固定） ===== */
+function dailySetKey(dateKey){ return "fp3:daily:" + dateKey; }
+function getSavedDailySet(dateKey){
+  const ids = store.get(dailySetKey(dateKey));
+  if(!Array.isArray(ids) || !ids.length) return null;
+  const qs = ids.map(id=>QUESTIONS.find(q=>q.id===id)).filter(Boolean);
+  return qs.length === ids.length ? qs : null; // 問題バンク側の変更等で復元不能なら作り直す
+}
+function saveDailySet(dateKey, set){ store.set(dailySetKey(dateKey), set.map(q=>q.id)); }
+/* その日の30問を取得。保存済みならそれを復元して返し（＝当日/履歴で固定）、無ければ新規に抽選して保存する。 */
+function ensureDailySet(dateKey){
+  const saved = getSavedDailySet(dateKey);
+  if(saved) return Promise.resolve(saved);
+  return buildDailySet(dateKey).then(set=>{ saveDailySet(dateKey, set); return set; });
 }
 
 /* ===== 保存（localStorage、無理ならメモリ） ===== */
@@ -133,6 +181,7 @@ function render(){
   else if(state.view==="result") html+=viewResult();
   else if(state.view==="history") html+=viewHistory(hist);
   else if(state.view==="detail") html+=viewDetail();
+  else if(state.view==="loading") html+=viewLoading();
   html+=`</div>`;
   app.innerHTML=html; window.scrollTo({top:0});
 }
@@ -230,23 +279,48 @@ function viewDetail(){
   return `<button class="btn" data-act="history" style="background:none;color:#4f46e5;font-size:14px;padding:4px 0;font-weight:700">◀ 履歴一覧</button>`+viewResult();
 }
 
-/* ===== 操作 ===== */
-function handleClick(e){
-  const t=e.target.closest("[data-act],[data-choose],[data-detail]"); if(!t) return;
+function viewLoading(){
+  return `<div class="card" style="padding:40px 20px;text-align:center;color:#64748b">問題を準備しています…</div>`;
+}
+
+/* ===== 操作 =====
+   当日/対象日の30問がまだ端末に保存されていない場合のみ、抽選中は簡易ローディング表示を挟む。
+   （保存済みなら ensureDailySet は同期的に解決するので体感遅延なし） */
+let busy=false;
+async function handleClick(e){
+  const t=e.target.closest("[data-act],[data-choose],[data-detail]"); if(!t || busy) return;
   const hist=getHistory();
   if(t.dataset.choose!==undefined && t.dataset.choose!==""){
     const v=t.dataset.choose; state.answers[state.idx]=(state.set[state.idx].type==="ox")?v:parseInt(v,10); render(); return;
   }
   if(t.dataset.detail){
     const key=t.dataset.detail, rec=hist.find(h=>h.dateKey===key);
-    state.set=dailySet(key); state.answers=state.set.map((q,i)=>rec?rec.rows[i].chosen:null);
-    state.session=rec||computeSession(key,state.set,state.answers); state.view="detail"; render(); return;
+    busy=true;
+    if(!getSavedDailySet(key)){ state.view="loading"; render(); }
+    const set=await ensureDailySet(key);
+    busy=false;
+    state.set=set; state.answers=set.map((q,i)=>rec?rec.rows[i].chosen:null);
+    state.session=rec||computeSession(key,set,state.answers); state.view="detail"; render(); return;
   }
   const act=t.dataset.act;
   if(act==="history"){ state.view="history"; render(); }
   else if(act==="home"){ state.view="home"; render(); }
-  else if(act==="start"){ const tk=todayKey(); state.set=dailySet(tk); state.answers=Array(state.set.length).fill(null); state.idx=0; state.view="quiz"; render(); }
-  else if(act==="showtoday"){ const tk=todayKey(),rec=hist.find(h=>h.dateKey===tk); state.set=dailySet(tk); state.answers=rec?rec.rows.map(r=>r.chosen):state.set.map(()=>null); state.session=rec||computeSession(tk,state.set,state.answers); state.view="result"; render(); }
+  else if(act==="start"){
+    const tk=todayKey();
+    busy=true;
+    if(!getSavedDailySet(tk)){ state.view="loading"; render(); }
+    const set=await ensureDailySet(tk);
+    busy=false;
+    state.set=set; state.answers=Array(set.length).fill(null); state.idx=0; state.view="quiz"; render();
+  }
+  else if(act==="showtoday"){
+    const tk=todayKey(),rec=hist.find(h=>h.dateKey===tk);
+    busy=true;
+    if(!getSavedDailySet(tk)){ state.view="loading"; render(); }
+    const set=await ensureDailySet(tk);
+    busy=false;
+    state.set=set; state.answers=rec?rec.rows.map(r=>r.chosen):set.map(()=>null); state.session=rec||computeSession(tk,set,state.answers); state.view="result"; render();
+  }
   else if(act==="next"){ state.idx++; render(); }
   else if(act==="prev"){ state.idx--; render(); }
   else if(act==="grade"){ const tk=todayKey(),s=computeSession(tk,state.set,state.answers); putHistory([s,...hist.filter(h=>h.dateKey!==tk)]); if(window.Sync) Sync.save(s); state.session=s; state.view="result"; render(); }
