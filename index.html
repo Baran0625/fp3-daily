@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>FP3級 デイリー演習</title>
+<title>FP2級 デイリー演習</title>
 <style>
   :root{ --bg:#f4f6f9; --ink:#0f172a; --sub:#64748b; --line:#e5e7eb; --card:#fff; --dark:#1e293b; --accent:#fbbf24; }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -79,7 +79,7 @@ function fmtDate(key){
 function gradeColor(p){ return p>=80?"#059669":p>=60?"#d97706":"#e11d48"; }
 function secOf(id){ return SECTIONS.find(s=>s.id===id); }
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
-function mcLabel(i){ return ["ア","イ","ウ"][i]; }
+function mcLabel(i){ return ["ア","イ","ウ","エ"][i]; }
 
 /* ===== リング（SVG文字列） ===== */
 function ring(pct,size=132,stroke=12,color){
@@ -125,7 +125,7 @@ function render(){
   const app=document.getElementById("app"), tk=todayKey(), hist=getHistory();
   const doneToday=hist.some(h=>h.dateKey===tk);
   let html=`<header class="top">
-    <div><div class="eyebrow">FP3級 デイリー演習</div><div class="date">${fmtDate(tk)}</div></div>
+    <div><div class="eyebrow">FP2級 デイリー演習</div><div class="date">${fmtDate(tk)}</div></div>
     <button class="pill ${state.view==="history"?"on":""}" data-act="${state.view==="history"?"home":"history"}">${state.view==="history"?"ホーム":"成績・履歴"}</button>
   </header><div class="fade">`;
   if(state.view==="home") html+=viewHome(tk,hist,doneToday);
@@ -142,7 +142,7 @@ function viewHome(tk,hist,doneToday){
   let h=`<div class="card" style="background:linear-gradient(135deg,#1e293b,#334155);color:#fff;border:none;padding:24px 22px;box-shadow:0 10px 30px -12px rgba(15,23,42,.5)">
     <div style="font-size:13px;opacity:.85">本日の出題</div>
     <div class="tabnum" style="font-size:34px;font-weight:800;margin:4px 0 2px">30<span style="font-size:16px;font-weight:600;opacity:.8"> 問</span></div>
-    <div style="font-size:13px;opacity:.8">6分野 × 各5問 ・ ○× / 3択 ・ 毎日ランダム</div>
+    <div style="font-size:13px;opacity:.8">6分野 × 各5問 ・ ○× / 3・4択 ・ 毎日ランダム</div>
     <button class="btn" data-act="start" style="margin-top:18px;width:100%;background:${doneToday?"#475569":"var(--accent)"};color:${doneToday?"#e2e8f0":"#1e293b"};font-size:16px;padding:14px 0">${doneToday?"もう一度挑戦する":"今日の問題を始める"}</button>`;
   if(doneToday) h+=`<button class="btn" data-act="showtoday" style="margin-top:10px;width:100%;background:transparent;color:#e2e8f0;border:1px solid #64748b;font-size:14px;padding:11px 0;font-weight:700">本日の結果・解説を見る</button>`;
   h+=`</div><div style="margin-top:22px;font-size:13px;font-weight:700;color:#475569">出題分野</div>
@@ -180,7 +180,7 @@ function viewQuiz(){
         <span class="tabnum" style="font-size:13px;color:#64748b;font-weight:600">${state.idx+1} / ${state.set.length}</span></div>
       <div class="bar"><i style="width:${(state.idx+1)/state.set.length*100}%"></i></div></div>
     <div class="card" style="margin-top:18px;padding:20px 18px;min-height:120px">
-      <div style="font-size:11px;color:#94a3b8;font-weight:700;letter-spacing:1px">第${state.idx+1}問 ・ ${q.type==="ox"?"○×問題":"3択問題"}</div>
+      <div style="font-size:11px;color:#94a3b8;font-weight:700;letter-spacing:1px">第${state.idx+1}問 ・ ${q.type==="ox"?"○×問題":`${q.options.length}択問題`}</div>
       <p style="font-size:16.5px;line-height:1.7;margin:8px 0 0;font-weight:500">${esc(q.q)}</p></div>
     <div style="margin-top:16px">${opts}</div>
     <div style="display:flex;gap:12px;margin-top:22px">
